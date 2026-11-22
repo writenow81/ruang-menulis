@@ -8,6 +8,7 @@ const mammoth = require('mammoth');
 const db = require('./src/db');
 const ai = require('./src/ai');
 const drive = require('./src/drive');
+const laporan = require('./src/laporan');
 const { bersihkanHtml, htmlKeTeks, binaDocx, binaTxt, teksKeHtml } = require('./src/exporter');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -439,6 +440,21 @@ app.post('/api/admin/language/analyze', perluLogMasuk, perluAdmin, perluHadAI, a
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, created_at = datetime('now')`).run(JSON.stringify(hasil));
   return hasil;
 }));
+
+app.get('/api/admin/language/report', perluLogMasuk, perluAdmin, async (req, res, next) => {
+  try {
+    const lapor = db.prepare("SELECT value FROM admin_reports WHERE key = 'isu_bahasa'").get();
+    if (!lapor) return salah(res, 404, 'Belum ada analisis untuk dimuat turun.');
+    const a = JSON.parse(lapor.value);
+    const nama = `Analisis_Isu_Bahasa_${a.dijana_pada.slice(0, 10)}`;
+    if (req.query.format === 'pdf') {
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${nama}.pdf"` });
+      return res.send(await laporan.binaPdfLaporan(a));
+    }
+    res.set({ 'Content-Type': drive.MIME.docx, 'Content-Disposition': `attachment; filename="${nama}.docx"` });
+    res.send(await laporan.binaDocxLaporan(a));
+  } catch (e) { next(e); }
+});
 
 app.put('/api/admin/users/:id', perluLogMasuk, perluAdmin, (req, res) => {
   const u = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(req.params.id));

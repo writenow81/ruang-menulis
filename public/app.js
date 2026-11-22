@@ -864,6 +864,10 @@ function binaIsuBahasa() {
     const jenisLencana = { ejaan: 'warn', tatabahasa: 'danger', 'struktur ayat': '' };
     hasilEl.replaceChildren(h('div', { class: 'stack' },
       h('div', { class: 'spread' }, h('h3', {}, 'Hasil analisis'), h('span', { class: 'muted small' }, `${tarikh(a.dijana_pada)} · ${a.statistik?.hari ?? '-'} hari · ${a.statistik?.jumlah_isu ?? '-'} isu`)),
+      h('div', { class: 'row' },
+        h('span', { class: 'muted small' }, 'Muat turun analisis:'),
+        h('button', { class: 'btn-sm', onclick: () => muatTurun('/api/admin/language/report?format=docx') }, 'Word (DOCX)'),
+        h('button', { class: 'btn-sm', onclick: () => muatTurun('/api/admin/language/report?format=pdf') }, 'PDF')),
       h('p', {}, a.ringkasan),
       a.isu_kerap.map((k, i) => h('div', { class: 'sugg' },
         h('div', { class: 'spread' }, h('strong', {}, `${i + 1}. ${k.kategori}`),
