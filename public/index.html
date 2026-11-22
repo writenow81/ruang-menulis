@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ms">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ruang Menulis</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar" id="topbar" hidden>
+    <a href="#/projek" class="brand">Ruang Menulis</a>
+    <nav>
+      <a href="#/admin" id="nav-admin" hidden>Panel admin</a>
+      <span id="nav-nama" class="muted"></span>
+      <button id="btn-logout" class="btn-link">Log keluar</button>
+    </nav>
+  </header>
+  <main id="app"></main>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <dialog id="dialog"><form method="dialog" id="dialog-form"></form></dialog>
+  <script src="/app.js"></script>
+</body>
+</html>
