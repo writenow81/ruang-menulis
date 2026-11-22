@@ -71,14 +71,27 @@ function setSesi(res, userId) {
 function pengguna(req) {
   const { sid } = bacaKuki(req);
   if (!sid) return null;
-  return db.prepare(`SELECT u.id, u.full_name, u.email, u.phone, u.role, u.disabled, u.last_active_at FROM sessions s JOIN users u ON u.id = s.user_id
+  return db.prepare(`SELECT u.id, u.full_name, u.email, u.phone, u.role, u.disabled, u.read_only, u.last_active_at FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token = ? AND s.expires_at > datetime('now')`).get(sid) || null;
 }
+
+// Pengguna yang disekat sementara hanya boleh membaca tulisan sendiri.
+const LALUAN_BACA = [
+  /^GET \/api\/me$/,
+  /^GET \/api\/projects$/,
+  /^GET \/api\/projects\/\d+$/,
+  /^GET \/api\/chapters\/\d+$/,
+];
+const MESEJ_SEKAT = 'Akaun anda disekat sementara oleh admin. Anda hanya boleh membaca tulisan anda.';
 
 function perluLogMasuk(req, res, next) {
   const u = pengguna(req);
   if (!u) return salah(res, 401, 'Sila log masuk.');
   if (u.disabled) return salah(res, 403, 'Akaun anda telah dinyahaktifkan. Hubungi admin.');
+  if (u.read_only && u.role !== 'admin') {
+    const laluan = `${req.method} ${req.baseUrl}${req.path}`.replace(/\/$/, '');
+    if (!LALUAN_BACA.some((r) => r.test(laluan))) return res.status(403).json({ error: MESEJ_SEKAT, kod: 'baca_sahaja' });
+  }
   // Rekod masa penggunaan terakhir (paling kerap sekali seminit)
   db.prepare("UPDATE users SET last_active_at = datetime('now') WHERE id = ? AND (last_active_at IS NULL OR last_active_at < datetime('now', '-1 minute'))").run(u.id);
   req.user = u;
@@ -151,7 +164,7 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', perluLogMasuk, (req, res) => {
   const { id, full_name, email, phone, role } = req.user;
-  res.json({ id, full_name, email, phone, role, google: { dikonfigurasi: drive.dikonfigurasi(), bersambung: drive.bersambung(id) } });
+  res.json({ id, full_name, email, phone, role, baca_sahaja: !!(req.user.read_only && role !== 'admin'), google: { dikonfigurasi: drive.dikonfigurasi(), bersambung: drive.bersambung(id) } });
 });
 
 app.post('/api/me/password', perluLogMasuk, async (req, res) => {
@@ -400,7 +413,7 @@ app.post('/api/google/import', perluLogMasuk, drive_route(async (req) => {
 
 // ---------- Panel admin ----------
 app.get('/api/admin/users', perluLogMasuk, perluAdmin, (req, res) => {
-  const rows = db.prepare(`SELECT u.id, u.full_name, u.email, u.phone, u.role, u.disabled, u.admin_note, u.created_at, u.last_active_at,
+  const rows = db.prepare(`SELECT u.id, u.full_name, u.email, u.phone, u.role, u.disabled, u.read_only, u.admin_note, u.created_at, u.last_active_at,
       (SELECT count(*) FROM projects p WHERE p.user_id = u.id) AS bilangan_projek,
       (SELECT count(*) FROM chapters c JOIN projects p ON p.id = c.project_id WHERE p.user_id = u.id AND c.deleted_at IS NULL) AS bilangan_bab,
       CAST(julianday('now') - julianday(COALESCE(u.last_active_at, u.created_at)) AS REAL) AS hari_tidak_aktif
@@ -464,11 +477,12 @@ app.put('/api/admin/users/:id', perluLogMasuk, perluAdmin, (req, res) => {
   const phone = req.body.phone !== undefined ? tapis(req.body.phone, 30).trim() : u.phone;
   const admin_note = req.body.admin_note !== undefined ? tapis(req.body.admin_note, 2000) : u.admin_note;
   let disabled = req.body.disabled !== undefined ? (req.body.disabled ? 1 : 0) : u.disabled;
-  if (u.email === ADMIN_EMAIL) disabled = 0; // akaun admin utama tidak boleh dinyahaktifkan
+  let read_only = req.body.read_only !== undefined ? (req.body.read_only ? 1 : 0) : u.read_only;
+  if (u.email === ADMIN_EMAIL || u.role === 'admin') { disabled = 0; read_only = 0; } // admin tidak boleh disekat
   if (!full_name || !emelSah(email)) return salah(res, 400, 'Nama atau e-mel tidak sah.');
   if (u.email === ADMIN_EMAIL && email !== ADMIN_EMAIL) return salah(res, 400, 'E-mel akaun admin utama tidak boleh ditukar di sini.');
   if (email !== u.email && db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return salah(res, 409, 'E-mel sudah digunakan.');
-  db.prepare('UPDATE users SET full_name = ?, email = ?, phone = ?, admin_note = ?, disabled = ? WHERE id = ?').run(full_name, email, phone, admin_note, disabled, u.id);
+  db.prepare('UPDATE users SET full_name = ?, email = ?, phone = ?, admin_note = ?, disabled = ?, read_only = ? WHERE id = ?').run(full_name, email, phone, admin_note, disabled, read_only, u.id);
   if (disabled) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
   res.json({ ok: true });
 });

@@ -50,6 +50,7 @@ async function api(method, url, body, opts = {}) {
   let data = null;
   try { data = await res.json(); } catch { /* tiada JSON */ }
   if (res.status === 401 && !opts.biar401) { state.me = null; go('#/masuk'); throw new Error(data?.error || 'Sila log masuk.'); }
+  if (res.status === 403 && data?.kod === 'baca_sahaja' && state.me) { state.me.baca_sahaja = true; terapkanSekat(); }
   if (!res.ok) throw new Error(data?.error || `Ralat (${res.status})`);
   return data;
 }
@@ -93,6 +94,14 @@ async function muatMe() {
     $('#nav-nama').textContent = state.me.full_name;
     $('#nav-admin').hidden = state.me.role !== 'admin';
   }
+  terapkanSekat();
+}
+function terapkanSekat() {
+  const sekat = !!state.me?.baca_sahaja;
+  document.body.classList.toggle('baca-sahaja', sekat);
+  $('#banner-sekat').hidden = !sekat;
+  const ed = $('.editor');
+  if (ed && sekat) ed.setAttribute('contenteditable', 'false');
 }
 
 $('#btn-logout').addEventListener('click', async () => {
@@ -198,7 +207,7 @@ async function paparProjek(id, tab) {
     h('p', { class: 'small' }, h('a', { href: '#/projek' }, '← Semua projek')),
     h('div', { class: 'spread' }, h('h1', {}, p.title),
       h('div', { class: 'row' }, h('button', { class: 'btn-sm', onclick: tukarJudul }, 'Tukar judul'), h('button', { class: 'btn-sm btn-danger', onclick: padamProjek }, 'Padam projek'))),
-    h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([k, l]) => h('button', { class: k === tab ? 'active' : '', onclick: () => go(`#/projek/${id}?tab=${k}`) }, l))),
+    h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([k, l]) => h('button', { class: `${k === tab ? 'active' : ''} ${['sampah', 'drive'].includes(k) ? 'perlu-tulis' : 'kekal'}`, onclick: () => go(`#/projek/${id}?tab=${k}`) }, l))),
     kandungan,
   );
 
@@ -312,6 +321,7 @@ function tabPembaca(p, el) {
     MEDAN_PEMBACA.map(([k, l, hint]) => {
       const ta = h('textarea', { id: k, rows: '3', oninput: () => { status.textContent = 'Belum disimpan…'; clearTimeout(t); t = setTimeout(simpan, 1200); } });
       ta.value = p[k] || '';
+      if (state.me.baca_sahaja) ta.readOnly = true;
       inputs[k] = ta;
       return [h('label', { for: k }, l, h('span', { class: 'hint' }, hint)), ta];
     }),
@@ -382,13 +392,13 @@ async function paparBab(id) {
   const kunciDraf = `draf:${id}`;
 
   const status = h('span', { class: 'save-state' }, 'Disimpan');
-  const judul = h('input', { class: 'title-input', value: bab.title, 'aria-label': 'Judul bab', maxlength: '200' });
-  const editor = h('div', { class: 'editor', contenteditable: 'true', spellcheck: 'true', 'data-placeholder': 'Mula menulis di sini…', html: bab.content_html || '' });
+  const judul = h('input', { class: 'title-input', value: bab.title, 'aria-label': 'Judul bab', maxlength: '200', readonly: !!state.me.baca_sahaja });
+  const editor = h('div', { class: 'editor', contenteditable: state.me.baca_sahaja ? 'false' : 'true', spellcheck: 'true', 'data-placeholder': 'Mula menulis di sini…', html: bab.content_html || '' });
 
   // Pulihkan draf tempatan jika lebih baharu daripada versi pelayan (contoh: talian terputus)
   try {
     const d = JSON.parse(localStorage.getItem(kunciDraf) || 'null');
-    if (d && d.html !== bab.content_html && d.masa > new Date(bab.updated_at.replace(' ', 'T') + 'Z').getTime()) {
+    if (!state.me.baca_sahaja && d && d.html !== bab.content_html && d.masa > new Date(bab.updated_at.replace(' ', 'T') + 'Z').getTime()) {
       setTimeout(async () => {
         if (await sahkan('Terdapat draf yang belum sempat disimpan ke pelayan pada peranti ini. Pulihkan draf tersebut?', 'Pulihkan draf')) { editor.innerHTML = d.html; tandaUbah(); } else localStorage.removeItem(kunciDraf);
       }, 50);
@@ -788,11 +798,13 @@ async function paparAdmin() {
     const senarai = pengguna.filter((u) => (!tapisTidakAktif || u.tidak_aktif_5_hari) && (!cari || `${u.full_name} ${u.email} ${u.phone}`.toLowerCase().includes(cari)));
     ringkasan.textContent = `${pengguna.length} pengguna · ${pengguna.filter((u) => u.tidak_aktif_5_hari).length} tidak aktif ≥ 5 hari · ${senarai.length} dipaparkan`;
     badan.replaceChildren(...senarai.map((u) => h('tr', { class: u.tidak_aktif_5_hari ? 'inactive' : '' },
-      h('td', {}, h('strong', {}, u.full_name), h('div', { class: 'small muted' }, u.email), u.role === 'admin' ? h('span', { class: 'badge' }, 'admin') : null, u.disabled ? h('span', { class: 'badge danger' }, 'dinyahaktif') : null, u.admin_note ? h('div', { class: 'small muted' }, `Nota: ${u.admin_note}`) : null),
+      h('td', {}, h('strong', {}, u.full_name), h('div', { class: 'small muted' }, u.email), u.role === 'admin' ? h('span', { class: 'badge' }, 'admin') : null, u.disabled ? h('span', { class: 'badge danger' }, 'dinyahaktif') : null, u.read_only ? h('span', { class: 'badge warn' }, 'disekat: baca sahaja') : null, u.admin_note ? h('div', { class: 'small muted' }, `Nota: ${u.admin_note}`) : null),
       h('td', {}, u.phone, u.whatsapp ? h('div', {}, h('a', { href: u.whatsapp, target: '_blank', rel: 'noopener noreferrer', class: 'small' }, 'WhatsApp')) : null),
       h('td', { class: 'small' }, tarikh(u.created_at)),
       h('td', { class: 'small' }, u.last_active_at ? tarikh(u.last_active_at) : 'Belum pernah', u.tidak_aktif_5_hari ? h('div', {}, h('span', { class: 'badge warn' }, `Tidak aktif ${Math.floor(u.hari_tidak_aktif)} hari`)) : null),
       h('td', { class: 'small' }, `${u.bilangan_projek} projek, ${u.bilangan_bab} bab`),
+      h('td', {}, u.role === 'admin' ? h('span', { class: 'muted small' }, '-') : h('label', { class: 'check small' },
+        h('input', { type: 'checkbox', checked: !!u.read_only, 'aria-label': `Sekat sementara ${u.full_name}`, onchange: (e) => togolSekat(u, e.target) }), 'Baca sahaja')),
       h('td', {}, h('div', { class: 'row' },
         h('button', { class: 'btn-sm', onclick: () => sunting(u) }, 'Sunting'),
         u.role !== 'admin' ? h('button', { class: 'btn-sm', onclick: () => togolAktif(u) }, u.disabled ? 'Aktifkan' : 'Nyahaktif') : null,
@@ -807,6 +819,15 @@ async function paparAdmin() {
     const r = await dialog({ tajuk: 'Sunting rekod pengguna', isi: [h('label', {}, 'Nama penuh'), f.full_name, h('label', {}, 'E-mel'), f.email, h('label', {}, 'Telefon'), f.phone, h('label', {}, 'Nota admin'), f.admin_note], butang: [{ label: 'Batal', nilai: 'batal' }, { label: 'Simpan', nilai: 'ok', kelas: 'btn-primary' }] });
     if (r !== 'ok') return;
     try { await api('PUT', `/api/admin/users/${u.id}`, Object.fromEntries(Object.entries(f).map(([k, i]) => [k, i.value]))); toast('Rekod dikemas kini.'); muatSemula(); } catch (e) { toast(e.message); }
+  }
+  async function togolSekat(u, kotak) {
+    kotak.disabled = true;
+    try {
+      await api('PUT', `/api/admin/users/${u.id}`, { read_only: kotak.checked });
+      u.read_only = kotak.checked ? 1 : 0;
+      toast(kotak.checked ? `${u.full_name} disekat sementara: baca sahaja.` : `Sekatan ${u.full_name} ditarik balik.`);
+      lukis();
+    } catch (e) { kotak.checked = !kotak.checked; toast(e.message); } finally { kotak.disabled = false; }
   }
   async function togolAktif(u) {
     if (!(await sahkan(u.disabled ? `Aktifkan semula akaun ${u.full_name}?` : `Nyahaktifkan akaun ${u.full_name}? Pengguna tidak dapat log masuk sehingga diaktifkan semula. Tulisan mereka tidak dipadam.`, u.disabled ? 'Aktifkan' : 'Nyahaktif'))) return;
@@ -838,7 +859,7 @@ async function paparAdmin() {
         h('button', { class: 'btn-sm', onclick: muatSemula }, 'Muat semula')),
       ringkasan,
       h('div', { class: 'table-wrap' }, h('table', {},
-        h('thead', {}, h('tr', {}, ['Pengguna', 'Telefon', 'Didaftar', 'Penggunaan terakhir', 'Kandungan', 'Tindakan'].map((t) => h('th', {}, t)))),
+        h('thead', {}, h('tr', {}, ['Pengguna', 'Telefon', 'Didaftar', 'Penggunaan terakhir', 'Kandungan', 'Sekat sementara', 'Tindakan'].map((t) => h('th', {}, t)))),
         badan))),
     binaIsuBahasa());
   lukis();

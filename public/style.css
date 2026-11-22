@@ -141,3 +141,10 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
   .toolbar { top: 49px; }
   .editor { min-height: 50vh; }
 }
+
+/* Sekat sementara: baca sahaja */
+#banner-sekat { background: var(--warn-soft); color: var(--warn); border-bottom: 1px solid var(--line); padding: 10px 16px; text-align: center; font-weight: 600; }
+body.baca-sahaja main button:not(.kekal), body.baca-sahaja main select, body.baca-sahaja main input[type=checkbox],
+body.baca-sahaja .toolbar, body.baca-sahaja .panel, body.baca-sahaja .perlu-tulis { display: none !important; }
+body.baca-sahaja .writer { grid-template-columns: 1fr; }
+body.baca-sahaja .editor { border-top: 1px solid var(--line); border-radius: var(--radius); }

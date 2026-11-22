@@ -83,4 +83,9 @@ CREATE TABLE IF NOT EXISTS admin_reports (
 );
 `);
 
+// Migrasi: sekat sementara (baca sahaja)
+if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'read_only')) {
+  db.exec('ALTER TABLE users ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0');
+}
+
 module.exports = db;
