@@ -96,6 +96,8 @@ async function muatMe() {
 }
 
 $('#btn-logout').addEventListener('click', async () => {
+  // Simpan kerja yang belum disimpan sebelum sesi ditamatkan
+  if (state.cleanup) { try { await state.cleanup(); } catch { /* abaikan */ } state.cleanup = null; }
   await api('POST', '/api/logout');
   state.me = null; await muatMe(); go('#/masuk');
 });
@@ -837,8 +839,62 @@ async function paparAdmin() {
       ringkasan,
       h('div', { class: 'table-wrap' }, h('table', {},
         h('thead', {}, h('tr', {}, ['Pengguna', 'Telefon', 'Didaftar', 'Penggunaan terakhir', 'Kandungan', 'Tindakan'].map((t) => h('th', {}, t)))),
-        badan))));
+        badan))),
+    binaIsuBahasa());
   lukis();
+}
+
+// Panel admin: analisis isu tatabahasa dan ejaan yang kerap dilakukan pengguna
+function binaIsuBahasa() {
+  const statistikEl = h('div', {}, loading('Memuatkan statistik…'));
+  const hasilEl = h('div');
+  const pilihHari = h('select', { 'aria-label': 'Tempoh', style: 'width:auto' },
+    [[7, '7 hari'], [30, '30 hari'], [90, '90 hari'], [365, '1 tahun']].map(([v, l]) => h('option', { value: v, selected: v === 30 }, l)));
+  const btn = h('button', { class: 'btn-primary' }, 'Analisis isu tatabahasa & ejaan');
+
+  function lukisStatistik(s) {
+    statistikEl.replaceChildren(
+      h('p', {}, h('strong', {}, `${s.jumlah_isu} isu`), ` daripada ${s.bilangan_pengguna} pengguna dalam ${s.hari} hari terakhir.`),
+      s.ikut_jenis.length ? h('div', { class: 'row' }, s.ikut_jenis.map((j) => h('span', { class: 'badge' }, `${j.jenis}: ${j.n}`))) : null,
+      s.pengguna_paling_banyak_isu.length ? h('p', { class: 'small muted' }, 'Paling banyak isu: ', s.pengguna_paling_banyak_isu.slice(0, 5).map((p) => `${p.nama} (${p.n})`).join(', ')) : null,
+    );
+  }
+  function lukisAnalisis(a) {
+    if (!a) return hasilEl.replaceChildren(h('p', { class: 'muted small' }, 'Belum ada analisis. Tekan butang di atas untuk menjana.'));
+    const jenisLencana = { ejaan: 'warn', tatabahasa: 'danger', 'struktur ayat': '' };
+    hasilEl.replaceChildren(h('div', { class: 'stack' },
+      h('div', { class: 'spread' }, h('h3', {}, 'Hasil analisis'), h('span', { class: 'muted small' }, `${tarikh(a.dijana_pada)} · ${a.statistik?.hari ?? '-'} hari · ${a.statistik?.jumlah_isu ?? '-'} isu`)),
+      h('p', {}, a.ringkasan),
+      a.isu_kerap.map((k, i) => h('div', { class: 'sugg' },
+        h('div', { class: 'spread' }, h('strong', {}, `${i + 1}. ${k.kategori}`),
+          h('div', { class: 'row' }, h('span', { class: `badge ${jenisLencana[k.jenis] ?? ''}` }, k.jenis), h('span', { class: 'badge' }, `±${k.anggaran_kejadian} kali · ${k.anggaran_pengguna} pengguna`))),
+        h('p', { style: 'margin:.4em 0' }, k.penerangan),
+        h('div', { class: 'small' }, k.contoh.map((c) => h('div', {}, h('span', { class: 'diff-old' }, c.asal), ' → ', h('span', { class: 'diff-new' }, c.betul)))),
+        h('p', { class: 'small', style: 'margin:.5em 0 0' }, h('strong', {}, 'Cadangan pengajaran: '), k.cadangan_pengajaran))),
+      a.pengguna_perlu_bimbingan.length ? h('div', {}, h('h3', {}, 'Pengguna yang mungkin memerlukan bimbingan'),
+        h('ul', {}, a.pengguna_perlu_bimbingan.map((p) => h('li', {}, h('strong', {}, p.nama), `: ${p.isu_utama}`)))) : null,
+      a.catatan_data ? h('p', { class: 'muted small' }, `Catatan data: ${a.catatan_data}`) : null,
+    ));
+  }
+  async function muat() {
+    try {
+      const r = await api('GET', `/api/admin/language?hari=${pilihHari.value}`);
+      lukisStatistik(r.statistik);
+      if (!hasilEl.hasChildNodes()) lukisAnalisis(r.analisis);
+    } catch (e) { statistikEl.replaceChildren(h('p', {}, e.message)); }
+  }
+  pilihHari.addEventListener('change', muat);
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    hasilEl.replaceChildren(loading('AI sedang menganalisis corak kesilapan pengguna…'));
+    try { lukisAnalisis(await api('POST', '/api/admin/language/analyze', { hari: Number(pilihHari.value) })); muat(); } catch (e) { hasilEl.replaceChildren(h('p', {}, e.message)); } finally { btn.disabled = false; }
+  });
+  muat();
+  return h('div', { class: 'card stack', style: 'margin-top:16px' },
+    h('h2', {}, 'Isu tatabahasa & ejaan pengguna'),
+    h('p', { class: 'muted small' }, 'Isu direkod setiap kali pengguna menggunakan Semakan Tulisan (ejaan, tatabahasa, struktur ayat; cadangan kata seerti tidak dikira). AI mengenal pasti corak kesilapan yang kerap berulang dan mencadangkan topik pengajaran.'),
+    h('div', { class: 'row' }, pilihHari, btn),
+    statistikEl, hasilEl);
 }
 
 route();

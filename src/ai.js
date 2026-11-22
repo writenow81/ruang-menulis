@@ -255,4 +255,36 @@ Setiap bahagian 2-5 butiran, setiap butiran 1-2 ayat. Ingat: ini cadangan; penul
   });
 }
 
-module.exports = { AIError, kemaskanTranskrip, semakTulisan, cariFakta, soalanPendorong, ulasPerenggan, analisisProjek, MODEL };
+// 7. Analisis admin: isu tatabahasa dan ejaan yang kerap dilakukan pengguna
+async function analisisIsuBahasa(isu, statistik) {
+  const senarai = isu.map((i) => `[${i.pengguna}] (${i.jenis}) "${i.asal}" → "${i.cadangan}" | ${i.sebab}`).join('\n');
+  return panggil({
+    effort: 'high',
+    system: `Anda pakar bahasa Melayu dan Inggeris yang membantu admin sebuah kursus penulisan.
+Anda menerima senarai isu bahasa yang dikesan oleh Semakan Tulisan dalam tulisan para pengguna (format: [nama pengguna] (jenis) "asal" → "cadangan" | sebab).
+Tugas: kenal pasti CORAK kesilapan yang kerap berulang, bukan senaraikan setiap kesilapan.
+- Kumpulkan kesilapan serupa di bawah satu kategori yang jelas (contoh: "di" sebagai kata sendi ditulis rapat, kata ganda tanpa sempang, "telah" berlebihan, ayat terlalu panjang, imbuhan meN- salah).
+- Susun mengikut kekerapan (paling kerap dahulu). Anggarkan bilangan kejadian dan bilangan pengguna terlibat berdasarkan senarai.
+- Bagi setiap kategori, beri 2-3 contoh SEBENAR daripada senarai, penerangan peraturan yang mudah difahami, dan cadangan pengajaran untuk kursus (contoh latihan ringkas).
+- Senaraikan pengguna yang paling memerlukan bimbingan (maksimum 8) dan isu utama mereka. Gunakan nama seperti dalam senarai.
+- Nada profesional dan membina; ini untuk membantu pengajar, bukan menghukum pengguna.
+- Jika data terlalu sedikit untuk kesimpulan, nyatakan dalam "catatan_data".`,
+    user: `STATISTIK: ${JSON.stringify(statistik)}\n\nSENARAI ISU (${isu.length}):\n${senarai}`,
+    schema: obj({
+      ringkasan: str,
+      isu_kerap: arr(obj({
+        kategori: str,
+        jenis: { type: 'string', enum: ['ejaan', 'tatabahasa', 'struktur ayat'] },
+        anggaran_kejadian: { type: 'integer' },
+        anggaran_pengguna: { type: 'integer' },
+        penerangan: str,
+        contoh: arr(obj({ asal: str, betul: str })),
+        cadangan_pengajaran: str,
+      })),
+      pengguna_perlu_bimbingan: arr(obj({ nama: str, isu_utama: str })),
+      catatan_data: str,
+    }),
+  });
+}
+
+module.exports = { AIError, kemaskanTranskrip, semakTulisan, cariFakta, soalanPendorong, ulasPerenggan, analisisProjek, analisisIsuBahasa, MODEL };

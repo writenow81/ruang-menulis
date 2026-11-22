@@ -329,7 +329,16 @@ function wajib(teks, nama, max = 40000) {
 }
 
 app.post('/api/ai/transcript', perluLogMasuk, perluHadAI, ai_route((req) => ai.kemaskanTranskrip(wajib(req.body.text, 'transkrip', 20000))));
-app.post('/api/ai/review', perluLogMasuk, perluHadAI, ai_route((req) => ai.semakTulisan(wajib(req.body.text, 'teks', 15000), projekBagiBab(req, req.body.chapter_id))));
+app.post('/api/ai/review', perluLogMasuk, perluHadAI, ai_route(async (req) => {
+  const hasil = await ai.semakTulisan(wajib(req.body.text, 'teks', 15000), projekBagiBab(req, req.body.chapter_id));
+  // Rekod isu untuk analisis admin (kata seerti bukan kesilapan, jadi tidak direkod)
+  const simpan = db.prepare('INSERT INTO language_issues (user_id, jenis, asal, cadangan, sebab) VALUES (?, ?, ?, ?, ?)');
+  for (const c of hasil.cadangan || []) {
+    if (c.jenis === 'kata seerti') continue;
+    simpan.run(req.user.id, c.jenis, tapis(c.asal, 300), tapis(c.cadangan, 300), tapis(c.sebab, 300));
+  }
+  return hasil;
+}));
 app.post('/api/ai/facts', perluLogMasuk, perluHadAI, ai_route((req) => ai.cariFakta(wajib(req.body.query, 'kata kunci carian', 500), tapis(req.body.context, 3000), projekBagiBab(req, req.body.chapter_id))));
 app.post('/api/ai/prompts', perluLogMasuk, perluHadAI, ai_route((req) => ai.soalanPendorong(wajib(req.body.selection, 'teks dipilih', 6000), tapis(req.body.context, 4000), projekBagiBab(req, req.body.chapter_id))));
 app.post('/api/ai/paragraph', perluLogMasuk, perluHadAI, ai_route((req) => ai.ulasPerenggan(wajib(req.body.paragraph, 'perenggan', 6000), tapis(req.body.context, 4000), projekBagiBab(req, req.body.chapter_id), req.body.previous || null)));
@@ -397,6 +406,39 @@ app.get('/api/admin/users', perluLogMasuk, perluAdmin, (req, res) => {
     FROM users u ORDER BY COALESCE(u.last_active_at, u.created_at) DESC`).all();
   res.json(rows.map((r) => ({ ...r, tidak_aktif_5_hari: r.hari_tidak_aktif >= 5, whatsapp: noWhatsApp(r.phone) ? `https://wa.me/${noWhatsApp(r.phone)}` : null })));
 });
+
+// Statistik isu bahasa dan analisis terakhir
+function statistikIsu(hari) {
+  const julat = `-${hari} days`;
+  const jumlah = db.prepare("SELECT count(*) AS n, count(DISTINCT user_id) AS pengguna FROM language_issues WHERE created_at >= datetime('now', ?)").get(julat);
+  const ikutJenis = db.prepare("SELECT jenis, count(*) AS n FROM language_issues WHERE created_at >= datetime('now', ?) GROUP BY jenis ORDER BY n DESC").all(julat);
+  const ikutPengguna = db.prepare(`SELECT u.full_name AS nama, count(*) AS n FROM language_issues i JOIN users u ON u.id = i.user_id
+    WHERE i.created_at >= datetime('now', ?) GROUP BY i.user_id ORDER BY n DESC LIMIT 10`).all(julat);
+  return { hari, jumlah_isu: jumlah.n, bilangan_pengguna: jumlah.pengguna, ikut_jenis: ikutJenis, pengguna_paling_banyak_isu: ikutPengguna };
+}
+const hariSah = (h) => ([7, 30, 90, 365].includes(Number(h)) ? Number(h) : 30);
+
+app.get('/api/admin/language', perluLogMasuk, perluAdmin, (req, res) => {
+  const lapor = db.prepare("SELECT value FROM admin_reports WHERE key = 'isu_bahasa'").get();
+  res.json({ statistik: statistikIsu(hariSah(req.query.hari)), analisis: lapor ? JSON.parse(lapor.value) : null });
+});
+
+app.post('/api/admin/language/analyze', perluLogMasuk, perluAdmin, perluHadAI, ai_route(async (req) => {
+  const hari = hariSah(req.body.hari);
+  const statistik = statistikIsu(hari);
+  if (statistik.jumlah_isu < 5) {
+    const e = new Error(`Belum cukup data: hanya ${statistik.jumlah_isu} isu direkod dalam ${hari} hari terakhir. Isu direkod setiap kali pengguna menggunakan Semakan Tulisan.`);
+    e.status = 400; throw e;
+  }
+  const isu = db.prepare(`SELECT u.full_name AS pengguna, i.jenis, i.asal, i.cadangan, i.sebab FROM language_issues i JOIN users u ON u.id = i.user_id
+    WHERE i.created_at >= datetime('now', ?) ORDER BY i.created_at DESC LIMIT 600`).all(`-${hari} days`);
+  const hasil = await ai.analisisIsuBahasa(isu, statistik);
+  hasil.dijana_pada = new Date().toISOString();
+  hasil.statistik = statistik;
+  db.prepare(`INSERT INTO admin_reports (key, value) VALUES ('isu_bahasa', ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, created_at = datetime('now')`).run(JSON.stringify(hasil));
+  return hasil;
+}));
 
 app.put('/api/admin/users/:id', perluLogMasuk, perluAdmin, (req, res) => {
   const u = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(req.params.id));

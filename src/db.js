@@ -65,6 +65,22 @@ CREATE TABLE IF NOT EXISTS oauth_states (
 );
 CREATE INDEX IF NOT EXISTS idx_chapters_project ON chapters(project_id, deleted_at, position);
 CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id);
+-- Isu bahasa daripada setiap Semakan Tulisan (untuk analisis admin)
+CREATE TABLE IF NOT EXISTS language_issues (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  jenis TEXT NOT NULL,
+  asal TEXT NOT NULL,
+  cadangan TEXT NOT NULL,
+  sebab TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_issues_created ON language_issues(created_at);
+CREATE TABLE IF NOT EXISTS admin_reports (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
 
 module.exports = db;
