@@ -433,6 +433,9 @@ app.delete('/api/admin/users/:id', perluLogMasuk, perluAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Semakan kesihatan (untuk hos) ----------
+app.get('/healthz', (req, res) => res.json({ ok: true }));
+
 // ---------- Fail statik ----------
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 app.use('/api', (req, res) => salah(res, 404, 'Tidak dijumpai.'));

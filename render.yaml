@@ -1,0 +1,33 @@
+# Konfigurasi Render (render.com): Blueprint untuk Ruang Menulis
+services:
+  - type: web
+    name: ruang-menulis
+    runtime: node
+    plan: starter            # pelan berbayar diperlukan untuk cakera kekal
+    region: singapore
+    buildCommand: npm ci
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: ADMIN_EMAIL
+        value: kreatifkursus@gmail.com
+      - key: ADMIN_PASSWORD
+        sync: false          # diisi semasa penyediaan
+      - key: RM_ANTHROPIC_API_KEY
+        sync: false          # diisi semasa penyediaan
+      - key: APP_URL
+        sync: false          # contoh: https://ruang-menulis.onrender.com
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

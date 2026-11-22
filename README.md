@@ -44,3 +44,11 @@ Skop `drive.file` hanya memberi akses kepada fail yang dicipta atau dibuka oleh 
 
 - Jalankan di belakang HTTPS (contoh: Nginx/Caddy, atau Render/Railway/Fly.io dengan cakera kekal untuk `data/`). Tetapkan `NODE_ENV=production` supaya kuki sesi menjadi `Secure`.
 - Rakaman suara menggunakan pengecaman suara pelayar (Chrome, Edge, Safari). HTTPS diperlukan untuk akses mikrofon.
+
+## Lancar di Render
+
+Fail `render.yaml` sudah disediakan (pelan Starter, rantau Singapura, cakera 1 GB untuk pangkalan data).
+
+1. Di render.com, pilih **New → Blueprint** dan sambungkan repositori ini.
+2. Isi `ADMIN_PASSWORD`, `RM_ANTHROPIC_API_KEY` dan `APP_URL` (alamat `https://....onrender.com` yang diberi Render).
+3. Selepas dilancarkan, buka alamat itu dan log masuk sebagai admin.
