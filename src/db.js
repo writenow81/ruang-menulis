@@ -52,17 +52,6 @@ CREATE TABLE IF NOT EXISTS chapters (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE TABLE IF NOT EXISTS google_tokens (
-  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  access_token TEXT,
-  refresh_token TEXT,
-  expires_at INTEGER
-);
-CREATE TABLE IF NOT EXISTS oauth_states (
-  state TEXT PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
 CREATE INDEX IF NOT EXISTS idx_chapters_project ON chapters(project_id, deleted_at, position);
 CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id);
 -- Isu bahasa daripada setiap Semakan Tulisan (untuk analisis admin)
@@ -87,5 +76,8 @@ CREATE TABLE IF NOT EXISTS admin_reports (
 if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'read_only')) {
   db.exec('ALTER TABLE users ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0');
 }
+
+// Google Drive telah dibuang: padam jadual lamanya
+db.exec('DROP TABLE IF EXISTS google_tokens; DROP TABLE IF EXISTS oauth_states;');
 
 module.exports = db;

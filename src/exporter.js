@@ -108,10 +108,5 @@ function binaTxt(judulDokumen, bab) {
   return (bab.length > 1 ? `${judulDokumen}\n\n` : '') + isi + '\n';
 }
 
-function teksKeHtml(teks) {
-  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return teks.split(/\n\s*\n|\r\n\s*\r\n/).map((p) => p.trim()).filter(Boolean)
-    .map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
-}
 
-module.exports = { bersihkanHtml, htmlKeTeks, binaDocx, binaTxt, teksKeHtml };
+module.exports = { bersihkanHtml, htmlKeTeks, binaDocx, binaTxt };

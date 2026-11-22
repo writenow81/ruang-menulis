@@ -164,10 +164,7 @@ function paparDaftar() {
 }
 
 // ---------- Senarai projek ----------
-async function paparSenaraiProjek(params) {
-  const g = params?.get('google');
-  if (g === 'ok') toast('Google Drive berjaya disambungkan.');
-  if (g === 'gagal') toast('Gagal menyambung Google Drive.');
+async function paparSenaraiProjek() {
   app.replaceChildren(loading('Memuatkan projek…'));
   const projek = await api('GET', '/api/projects');
   const baru = async () => {
@@ -190,7 +187,7 @@ async function paparSenaraiProjek(params) {
 async function paparProjek(id, tab) {
   app.replaceChildren(loading('Memuatkan projek…'));
   const p = await api('GET', `/api/projects/${id}`);
-  const tabs = [['bab', 'Senarai Bab'], ['pembaca', 'Zon Kenal Pembaca'], ['sampah', `Tong Sampah (${p.sampah.length})`], ['drive', 'Google Drive']];
+  const tabs = [['bab', 'Senarai Bab'], ['pembaca', 'Zon Kenal Pembaca'], ['sampah', `Tong Sampah (${p.sampah.length})`]];
   const kandungan = h('div');
 
   const tukarJudul = async () => {
@@ -207,13 +204,12 @@ async function paparProjek(id, tab) {
     h('p', { class: 'small' }, h('a', { href: '#/projek' }, '← Semua projek')),
     h('div', { class: 'spread' }, h('h1', {}, p.title),
       h('div', { class: 'row' }, h('button', { class: 'btn-sm', onclick: tukarJudul }, 'Tukar judul'), h('button', { class: 'btn-sm btn-danger', onclick: padamProjek }, 'Padam projek'))),
-    h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([k, l]) => h('button', { class: `${k === tab ? 'active' : ''} ${['sampah', 'drive'].includes(k) ? 'perlu-tulis' : 'kekal'}`, onclick: () => go(`#/projek/${id}?tab=${k}`) }, l))),
+    h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([k, l]) => h('button', { class: `${k === tab ? 'active' : ''} ${k === 'sampah' ? 'perlu-tulis' : 'kekal'}`, onclick: () => go(`#/projek/${id}?tab=${k}`) }, l))),
     kandungan,
   );
 
   if (tab === 'pembaca') return tabPembaca(p, kandungan);
   if (tab === 'sampah') return tabSampah(p, kandungan);
-  if (tab === 'drive') return tabDrive(p, kandungan);
   return tabBab(p, kandungan);
 }
 
@@ -345,46 +341,6 @@ function tabSampah(p, el) {
         } }, 'Padam kekal')))) : [h('li', {}, h('span', { class: 'muted' }, 'Tong sampah kosong.'))])));
 }
 
-async function tabDrive(p, el) {
-  const g = state.me.google;
-  if (!g.dikonfigurasi) {
-    return el.replaceChildren(h('div', { class: 'card' }, h('h2', {}, 'Google Drive'), h('p', {}, 'Integrasi Google Drive belum diaktifkan oleh pentadbir aplikasi.')));
-  }
-  if (!g.bersambung) {
-    return el.replaceChildren(h('div', { class: 'card stack' }, h('h2', {}, 'Google Drive'),
-      h('p', {}, 'Sambungkan akaun Google anda untuk menyimpan dan membuka tulisan melalui Google Drive. Kebenaran ini berasingan daripada log masuk Ruang Menulis.'),
-      h('p', { class: 'muted small' }, 'Aplikasi hanya dapat mengakses fail yang ia cipta atau anda buka melaluinya (folder "Ruang Menulis"), bukan keseluruhan Drive anda.'),
-      h('a', { class: 'btn btn-primary', href: '/api/google/connect' }, 'Sambungkan Google Drive')));
-  }
-  const fail = h('div', {}, loading('Memuatkan fail Drive…'));
-  const simpan = async (format, btn) => {
-    btn.disabled = true;
-    try { const r = await api('POST', '/api/google/save', { project_id: p.id, format }); toast(`Disimpan ke Drive: ${r.name}`); muatFail(); } catch (e) { toast(e.message); } finally { btn.disabled = false; }
-  };
-  async function muatFail() {
-    try {
-      const senarai = await api('GET', '/api/google/files');
-      fail.replaceChildren(h('ul', { class: 'list' }, senarai.length ? senarai.map((f) => h('li', {},
-        h('span', { class: 'title' }, f.name), h('span', { class: 'muted small' }, tarikh(f.modifiedTime)),
-        h('button', { class: 'btn-sm', onclick: async (e) => {
-          e.target.disabled = true;
-          try { const r = await api('POST', '/api/google/import', { project_id: p.id, file_id: f.id }); toast('Fail dibuka sebagai bab baharu.'); go(`#/bab/${r.id}`); } catch (err) { toast(err.message); e.target.disabled = false; }
-        } }, 'Buka sebagai bab baharu'))) : [h('li', {}, h('span', { class: 'muted' }, 'Belum ada fail daripada Ruang Menulis dalam Drive anda.'))]));
-    } catch (e) { fail.replaceChildren(h('p', {}, e.message)); }
-  }
-  const b1 = h('button', { class: 'btn-primary' }, 'Simpan projek ke Drive (DOCX)');
-  const b2 = h('button', {}, 'Simpan projek ke Drive (TXT)');
-  b1.onclick = () => simpan('docx', b1); b2.onclick = () => simpan('txt', b2);
-  el.replaceChildren(h('div', { class: 'card stack' },
-    h('div', { class: 'spread' }, h('h2', {}, 'Google Drive'), h('button', { class: 'btn-sm', onclick: async () => {
-      if (!(await sahkan('Putuskan sambungan Google Drive? Fail dalam Drive anda tidak akan dipadam.', 'Putuskan'))) return;
-      await api('POST', '/api/google/disconnect'); state.me.google.bersambung = false; tabDrive(p, el);
-    } }, 'Putuskan sambungan')),
-    h('div', { class: 'row' }, b1, b2),
-    h('h3', {}, 'Fail dalam folder "Ruang Menulis"'), fail));
-  muatFail();
-}
-
 // ---------- Zon Menulis ----------
 async function paparBab(id) {
   app.replaceChildren(loading('Membuka bab…'));
@@ -487,19 +443,14 @@ async function paparBab(id) {
     } catch { /* abaikan */ }
   }
   const btnUlas = h('button', { class: 'btn-primary', onmousedown: (e) => e.preventDefault(), onclick: () => { bukaPanel('ulas'); ulasPerenggan(false); } }, 'Ulas Perenggan');
-  const menuMuatTurun = h('select', { 'aria-label': 'Muat turun atau simpan', class: 'btn-sm', style: 'width:auto' },
+  const menuMuatTurun = h('select', { 'aria-label': 'Muat turun', class: 'btn-sm', style: 'width:auto' },
     h('option', { value: '' }, 'Muat turun…'),
     h('option', { value: 'docx' }, 'Bab ini: Word (DOCX)'),
-    h('option', { value: 'txt' }, 'Bab ini: TXT'),
-    state.me.google.dikonfigurasi ? h('option', { value: 'drive' }, 'Simpan ke Google Drive') : null);
+    h('option', { value: 'txt' }, 'Bab ini: TXT'));
   menuMuatTurun.addEventListener('change', async () => {
     const v = menuMuatTurun.value; menuMuatTurun.value = '';
     berubah = true; await simpan();
     if (v === 'docx' || v === 'txt') muatTurun(`/api/chapters/${id}/export?format=${v}`);
-    if (v === 'drive') {
-      if (!state.me.google.bersambung) { if (await sahkan('Google Drive belum disambungkan. Sambungkan sekarang?', 'Sambungkan')) location.href = '/api/google/connect'; return; }
-      try { const r = await api('POST', '/api/google/save', { chapter_id: id, format: 'docx' }); toast(`Disimpan ke Drive: ${r.name}`); } catch (e) { toast(e.message); }
-    }
   });
 
   // --- Panel bantuan ---

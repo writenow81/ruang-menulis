@@ -3,13 +3,13 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const mammoth = require('mammoth');
 
 const db = require('./src/db');
 const ai = require('./src/ai');
-const drive = require('./src/drive');
 const laporan = require('./src/laporan');
-const { bersihkanHtml, htmlKeTeks, binaDocx, binaTxt, teksKeHtml } = require('./src/exporter');
+const { bersihkanHtml, htmlKeTeks, binaDocx, binaTxt } = require('./src/exporter');
+
+const MIME_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 const PORT = Number(process.env.PORT || 3000);
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'kreatifkursus@gmail.com').toLowerCase();
@@ -164,7 +164,7 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', perluLogMasuk, (req, res) => {
   const { id, full_name, email, phone, role } = req.user;
-  res.json({ id, full_name, email, phone, role, baca_sahaja: !!(req.user.read_only && role !== 'admin'), google: { dikonfigurasi: drive.dikonfigurasi(), bersambung: drive.bersambung(id) } });
+  res.json({ id, full_name, email, phone, role, baca_sahaja: !!(req.user.read_only && role !== 'admin') });
 });
 
 app.post('/api/me/password', perluLogMasuk, async (req, res) => {
@@ -284,7 +284,7 @@ async function hantarFail(res, { judul, bab, format }) {
     return res.send('﻿' + binaTxt(judul, bab));
   }
   const buf = await binaDocx(judul, bab);
-  res.set({ 'Content-Type': drive.MIME.docx, 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(namaFail(judul))}.docx` });
+  res.set({ 'Content-Type': MIME_DOCX, 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(namaFail(judul))}.docx` });
   res.send(buf);
 }
 
@@ -367,50 +367,6 @@ app.post('/api/projects/:id/analyze', perluLogMasuk, perluHadAI, ai_route(async 
   return hasil;
 }));
 
-// ---------- Google Drive ----------
-app.get('/api/google/connect', perluLogMasuk, (req, res) => {
-  if (!drive.dikonfigurasi()) return salah(res, 501, 'Google Drive belum dikonfigurasi oleh pentadbir.');
-  res.redirect(drive.urlKebenaran(req.user.id));
-});
-app.get('/api/google/callback', async (req, res) => {
-  if (req.query.error) return res.redirect('/#/projek?google=batal');
-  try { await drive.tukarKod(String(req.query.code || ''), String(req.query.state || '')); res.redirect('/#/projek?google=ok'); } catch (e) {
-    console.error(e); res.redirect('/#/projek?google=gagal');
-  }
-});
-app.post('/api/google/disconnect', perluLogMasuk, (req, res) => { drive.putuskan(req.user.id); res.json({ ok: true }); });
-
-const drive_route = (fn) => async (req, res) => {
-  try { res.json(await fn(req)); } catch (e) { console.error(e); salah(res, e.status || 500, e.message || 'Ralat Google Drive.'); }
-};
-app.post('/api/google/save', perluLogMasuk, drive_route(async (req) => {
-  const format = req.body.format === 'txt' ? 'txt' : 'docx';
-  const d = babUntukEksport(req, { chapterId: req.body.chapter_id, projectId: req.body.project_id });
-  if (!d || !d.bab.length) { const e = new Error('Tiada kandungan untuk disimpan.'); e.status = 404; throw e; }
-  const buffer = format === 'txt' ? Buffer.from('﻿' + binaTxt(d.judul, d.bab), 'utf8') : await binaDocx(d.judul, d.bab);
-  const satuBab = !!req.body.chapter_id;
-  const fileId = satuBab && format === 'docx' ? d.bab[0].drive_file_id : null;
-  const fail = await drive.simpan(req.user.id, { nama: `${namaFail(d.judul)}.${format}`, buffer, format, fileId });
-  if (satuBab && format === 'docx') db.prepare('UPDATE chapters SET drive_file_id = ? WHERE id = ?').run(fail.id, d.bab[0].id);
-  return fail;
-}));
-app.get('/api/google/files', perluLogMasuk, drive_route((req) => drive.senarai(req.user.id)));
-app.post('/api/google/import', perluLogMasuk, drive_route(async (req) => {
-  const p = projekMilik(req, req.body.project_id);
-  if (!p) { const e = new Error('Projek tidak dijumpai.'); e.status = 404; throw e; }
-  const { meta, buffer } = await drive.muatTurun(req.user.id, String(req.body.file_id || ''));
-  let html;
-  if (meta.mimeType === drive.MIME.docx) html = (await mammoth.convertToHtml({ buffer })).value;
-  else if (meta.mimeType === drive.MIME.txt) html = teksKeHtml(buffer.toString('utf8').replace(/^﻿/, ''));
-  else { const e = new Error('Hanya fail DOCX atau TXT boleh dibuka.'); e.status = 400; throw e; }
-  const { m } = db.prepare('SELECT COALESCE(MAX(position), 0) AS m FROM chapters WHERE project_id = ?').get(p.id);
-  const title = meta.name.replace(/\.(docx|txt)$/i, '').replace(/_/g, ' ');
-  const r = db.prepare('INSERT INTO chapters (project_id, title, position, content_html, drive_file_id) VALUES (?, ?, ?, ?, ?)')
-    .run(p.id, title, m + 1, bersihkanHtml(html), meta.mimeType === drive.MIME.docx ? meta.id : null);
-  sentuhProjek(p.id);
-  return { id: Number(r.lastInsertRowid) };
-}));
-
 // ---------- Panel admin ----------
 app.get('/api/admin/users', perluLogMasuk, perluAdmin, (req, res) => {
   const rows = db.prepare(`SELECT u.id, u.full_name, u.email, u.phone, u.role, u.disabled, u.read_only, u.admin_note, u.created_at, u.last_active_at,
@@ -464,7 +420,7 @@ app.get('/api/admin/language/report', perluLogMasuk, perluAdmin, async (req, res
       res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${nama}.pdf"` });
       return res.send(await laporan.binaPdfLaporan(a));
     }
-    res.set({ 'Content-Type': drive.MIME.docx, 'Content-Disposition': `attachment; filename="${nama}.docx"` });
+    res.set({ 'Content-Type': MIME_DOCX, 'Content-Disposition': `attachment; filename="${nama}.docx"` });
     res.send(await laporan.binaDocxLaporan(a));
   } catch (e) { next(e); }
 });
