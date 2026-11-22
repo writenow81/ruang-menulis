@@ -22,7 +22,7 @@ Anda perlukan Node.js 22.13 atau lebih baharu (untuk SQLite terbina dalam).
 
 ```bash
 npm install
-cp .env.example .env   # kemudian isi ANTHROPIC_API_KEY dan ADMIN_PASSWORD
+cp .env.example .env   # kemudian isi RM_ANTHROPIC_API_KEY dan ADMIN_PASSWORD
 npm start
 ```
 

@@ -3,7 +3,14 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
 const MODEL = process.env.CLAUDE_MODEL || 'claude-opus-5-5';
-const client = new Anthropic(); // membaca ANTHROPIC_API_KEY daripada persekitaran
+// Kunci dibaca daripada RM_ANTHROPIC_API_KEY (diutamakan) atau ANTHROPIC_API_KEY.
+// Alamat API ditetapkan secara jelas supaya ANTHROPIC_BASE_URL persekitaran lain tidak terpakai.
+const API_KEY = process.env.RM_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+const client = new Anthropic({
+  apiKey: API_KEY || null,
+  authToken: null,
+  baseURL: process.env.RM_ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
+});
 
 const PRINSIP = `Anda pembantu penulisan dalam aplikasi "Ruang Menulis".
 Prinsip yang tidak boleh dilanggar:
@@ -61,7 +68,7 @@ async function panggil({ system, user, schema, tools, effort = 'medium', maxToke
       if (err instanceof Anthropic.AuthenticationError) throw new AIError('Kunci API AI belum ditetapkan dengan betul pada pelayan.', 500);
       if (err instanceof Anthropic.APIConnectionError) throw new AIError('Tidak dapat menghubungi perkhidmatan AI.', 502);
       if (err instanceof Anthropic.APIError) throw new AIError(`Ralat AI: ${err.message}`, 502);
-      if (/authentication method/i.test(err?.message || '')) throw new AIError('Kunci API AI (ANTHROPIC_API_KEY) belum ditetapkan pada pelayan.', 503);
+      if (/authentication method/i.test(err?.message || '')) throw new AIError('Kunci API AI (RM_ANTHROPIC_API_KEY atau ANTHROPIC_API_KEY) belum ditetapkan pada pelayan.', 503);
       throw err;
     }
     // Carian web yang panjang boleh berhenti sementara (pause_turn); sambung semula.

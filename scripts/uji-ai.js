@@ -1,5 +1,5 @@
 // Ujian langsung semua fungsi AI dengan kunci sebenar.
-// Jalankan: node scripts/uji-ai.js   (memerlukan ANTHROPIC_API_KEY)
+// Jalankan: node scripts/uji-ai.js   (memerlukan RM_ANTHROPIC_API_KEY atau ANTHROPIC_API_KEY)
 const ai = require('../src/ai');
 
 const projek = {
