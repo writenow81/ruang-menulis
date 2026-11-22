@@ -83,14 +83,16 @@ const LALUAN_BACA = [
   /^GET \/api\/chapters\/\d+$/,
 ];
 const MESEJ_SEKAT = 'Akaun anda disekat sementara oleh admin. Anda hanya boleh membaca tulisan anda.';
+const MESEJ_NYAHAKTIF = 'Akaun anda telah dinyahaktifkan oleh admin. Anda hanya boleh membaca tulisan anda.';
+// Nyahaktif dan Sekat sementara kedua-duanya menjadikan akaun baca sahaja (admin dikecualikan).
+const bacaSahaja = (u) => !!((u.read_only || u.disabled) && u.role !== 'admin');
 
 function perluLogMasuk(req, res, next) {
   const u = pengguna(req);
   if (!u) return salah(res, 401, 'Sila log masuk.');
-  if (u.disabled) return salah(res, 403, 'Akaun anda telah dinyahaktifkan. Hubungi admin.');
-  if (u.read_only && u.role !== 'admin') {
+  if (bacaSahaja(u)) {
     const laluan = `${req.method} ${req.baseUrl}${req.path}`.replace(/\/$/, '');
-    if (!LALUAN_BACA.some((r) => r.test(laluan))) return res.status(403).json({ error: MESEJ_SEKAT, kod: 'baca_sahaja' });
+    if (!LALUAN_BACA.some((r) => r.test(laluan))) return res.status(403).json({ error: u.disabled ? MESEJ_NYAHAKTIF : MESEJ_SEKAT, kod: 'baca_sahaja', nyahaktif: !!u.disabled });
   }
   // Rekod masa penggunaan terakhir (paling kerap sekali seminit)
   db.prepare("UPDATE users SET last_active_at = datetime('now') WHERE id = ? AND (last_active_at IS NULL OR last_active_at < datetime('now', '-1 minute'))").run(u.id);
@@ -148,7 +150,6 @@ app.post('/api/login', async (req, res) => {
   if (!hadKadar(`login:${req.ip}:${email}`, 8, 15 * 60e3)) return salah(res, 429, 'Terlalu banyak cubaan log masuk. Cuba lagi dalam 15 minit.');
   const u = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (!u || !(await bcrypt.compare(String(req.body.password || ''), u.password_hash))) return salah(res, 401, 'E-mel atau kata laluan salah.');
-  if (u.disabled) return salah(res, 403, 'Akaun anda telah dinyahaktifkan. Hubungi admin.');
   db.prepare("UPDATE users SET last_active_at = datetime('now') WHERE id = ?").run(u.id);
   db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
   setSesi(res, u.id);
@@ -164,7 +165,7 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', perluLogMasuk, (req, res) => {
   const { id, full_name, email, phone, role } = req.user;
-  res.json({ id, full_name, email, phone, role, baca_sahaja: !!(req.user.read_only && role !== 'admin') });
+  res.json({ id, full_name, email, phone, role, baca_sahaja: bacaSahaja(req.user), nyahaktif: !!(req.user.disabled && role !== 'admin') });
 });
 
 app.post('/api/me/password', perluLogMasuk, async (req, res) => {
@@ -439,7 +440,6 @@ app.put('/api/admin/users/:id', perluLogMasuk, perluAdmin, (req, res) => {
   if (u.email === ADMIN_EMAIL && email !== ADMIN_EMAIL) return salah(res, 400, 'E-mel akaun admin utama tidak boleh ditukar di sini.');
   if (email !== u.email && db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return salah(res, 409, 'E-mel sudah digunakan.');
   db.prepare('UPDATE users SET full_name = ?, email = ?, phone = ?, admin_note = ?, disabled = ?, read_only = ? WHERE id = ?').run(full_name, email, phone, admin_note, disabled, read_only, u.id);
-  if (disabled) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
   res.json({ ok: true });
 });
 

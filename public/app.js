@@ -50,7 +50,7 @@ async function api(method, url, body, opts = {}) {
   let data = null;
   try { data = await res.json(); } catch { /* tiada JSON */ }
   if (res.status === 401 && !opts.biar401) { state.me = null; go('#/masuk'); throw new Error(data?.error || 'Sila log masuk.'); }
-  if (res.status === 403 && data?.kod === 'baca_sahaja' && state.me) { state.me.baca_sahaja = true; terapkanSekat(); }
+  if (res.status === 403 && data?.kod === 'baca_sahaja' && state.me) { state.me.baca_sahaja = true; state.me.nyahaktif = !!data.nyahaktif; terapkanSekat(); }
   if (!res.ok) throw new Error(data?.error || `Ralat (${res.status})`);
   return data;
 }
@@ -100,6 +100,9 @@ function terapkanSekat() {
   const sekat = !!state.me?.baca_sahaja;
   document.body.classList.toggle('baca-sahaja', sekat);
   $('#banner-sekat').hidden = !sekat;
+  if (sekat) $('#banner-sekat').textContent = state.me.nyahaktif
+    ? 'Akaun anda telah dinyahaktifkan oleh admin. Anda hanya boleh membaca tulisan anda. Hubungi admin untuk maklumat lanjut.'
+    : 'Akaun anda disekat sementara oleh admin. Anda hanya boleh membaca tulisan anda. Hubungi admin untuk maklumat lanjut.';
   const ed = $('.editor');
   if (ed && sekat) ed.setAttribute('contenteditable', 'false');
 }
@@ -749,7 +752,7 @@ async function paparAdmin() {
     const senarai = pengguna.filter((u) => (!tapisTidakAktif || u.tidak_aktif_5_hari) && (!cari || `${u.full_name} ${u.email} ${u.phone}`.toLowerCase().includes(cari)));
     ringkasan.textContent = `${pengguna.length} pengguna · ${pengguna.filter((u) => u.tidak_aktif_5_hari).length} tidak aktif ≥ 5 hari · ${senarai.length} dipaparkan`;
     badan.replaceChildren(...senarai.map((u) => h('tr', { class: u.tidak_aktif_5_hari ? 'inactive' : '' },
-      h('td', {}, h('strong', {}, u.full_name), h('div', { class: 'small muted' }, u.email), u.role === 'admin' ? h('span', { class: 'badge' }, 'admin') : null, u.disabled ? h('span', { class: 'badge danger' }, 'dinyahaktif') : null, u.read_only ? h('span', { class: 'badge warn' }, 'disekat: baca sahaja') : null, u.admin_note ? h('div', { class: 'small muted' }, `Nota: ${u.admin_note}`) : null),
+      h('td', {}, h('strong', {}, u.full_name), h('div', { class: 'small muted' }, u.email), u.role === 'admin' ? h('span', { class: 'badge' }, 'admin') : null, u.disabled ? h('span', { class: 'badge danger' }, 'dinyahaktif: baca sahaja') : null, u.read_only ? h('span', { class: 'badge warn' }, 'disekat: baca sahaja') : null, u.admin_note ? h('div', { class: 'small muted' }, `Nota: ${u.admin_note}`) : null),
       h('td', {}, u.phone, u.whatsapp ? h('div', {}, h('a', { href: u.whatsapp, target: '_blank', rel: 'noopener noreferrer', class: 'small' }, 'WhatsApp')) : null),
       h('td', { class: 'small' }, tarikh(u.created_at)),
       h('td', { class: 'small' }, u.last_active_at ? tarikh(u.last_active_at) : 'Belum pernah', u.tidak_aktif_5_hari ? h('div', {}, h('span', { class: 'badge warn' }, `Tidak aktif ${Math.floor(u.hari_tidak_aktif)} hari`)) : null),
@@ -781,7 +784,7 @@ async function paparAdmin() {
     } catch (e) { kotak.checked = !kotak.checked; toast(e.message); } finally { kotak.disabled = false; }
   }
   async function togolAktif(u) {
-    if (!(await sahkan(u.disabled ? `Aktifkan semula akaun ${u.full_name}?` : `Nyahaktifkan akaun ${u.full_name}? Pengguna tidak dapat log masuk sehingga diaktifkan semula. Tulisan mereka tidak dipadam.`, u.disabled ? 'Aktifkan' : 'Nyahaktif'))) return;
+    if (!(await sahkan(u.disabled ? `Aktifkan semula akaun ${u.full_name}?` : `Nyahaktifkan akaun ${u.full_name}? Pengguna masih boleh log masuk dan membaca tulisan mereka, tetapi tidak boleh menulis, menyunting, memadam, menggunakan AI atau memuat turun sehingga diaktifkan semula. Tulisan mereka tidak dipadam.`, u.disabled ? 'Aktifkan' : 'Nyahaktif'))) return;
     await api('PUT', `/api/admin/users/${u.id}`, { disabled: !u.disabled }); muatSemula();
   }
   async function setKataLaluan(u) {
