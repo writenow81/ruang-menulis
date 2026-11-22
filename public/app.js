@@ -774,6 +774,51 @@ async function paparAdmin() {
     if (r !== 'ok') return;
     try { await api('PUT', `/api/admin/users/${u.id}`, Object.fromEntries(Object.entries(f).map(([k, i]) => [k, i.value]))); toast('Rekod dikemas kini.'); muatSemula(); } catch (e) { toast(e.message); }
   }
+  async function tambahPengguna() {
+    const f = {
+      full_name: h('input', { autocomplete: 'off' }),
+      email: h('input', { type: 'email', autocomplete: 'off' }),
+      phone: h('input', { type: 'tel', placeholder: '012-345 6789', autocomplete: 'off' }),
+      password: h('input', { autocomplete: 'new-password', placeholder: 'Biarkan kosong untuk jana automatik' }),
+      admin_note: h('textarea', { rows: '2' }),
+    };
+    const ralat = h('p', { class: 'small', style: 'color:var(--danger);margin:0' });
+    for (;;) {
+      const r = await dialog({
+        tajuk: 'Tambah pengguna',
+        isi: [h('label', {}, 'Nama penuh'), f.full_name, h('label', {}, 'E-mel', h('span', { class: 'hint' }, 'Digunakan untuk log masuk.')), f.email,
+          h('label', {}, 'Nombor telefon'), f.phone,
+          h('label', {}, 'Kata laluan', h('span', { class: 'hint' }, 'Sekurang-kurangnya 8 aksara. Biarkan kosong dan aplikasi akan menjana kata laluan rawak.')), f.password,
+          h('label', {}, 'Nota admin (pilihan)'), f.admin_note, ralat],
+        butang: [{ label: 'Batal', nilai: 'batal' }, { label: 'Cipta akaun', nilai: 'ok', kelas: 'btn-primary' }],
+      });
+      if (r !== 'ok') return;
+      try {
+        const hasil = await api('POST', '/api/admin/users', Object.fromEntries(Object.entries(f).map(([k, i]) => [k, i.value])));
+        await muatSemula();
+        return paparButiranAkaun(hasil);
+      } catch (e) { ralat.textContent = e.message; } // buka semula borang dengan nilai yang sama
+    }
+  }
+  async function paparButiranAkaun(r) {
+    const salin = h('button', { type: 'button', class: 'btn-sm', onclick: async () => {
+      try { await navigator.clipboard.writeText(r.mesej); salin.textContent = 'Disalin ✓'; } catch { toast('Tidak dapat menyalin. Salin secara manual.'); }
+    } }, 'Salin butiran');
+    await dialog({
+      tajuk: 'Akaun berjaya dicipta',
+      isi: [
+        h('p', {}, `Akaun untuk ${r.full_name} sudah sedia. Berikan butiran ini kepada pengguna:`),
+        h('div', { class: 'sugg' },
+          h('div', {}, 'Log masuk: ', h('strong', {}, r.url_log_masuk)),
+          h('div', {}, 'E-mel: ', h('strong', {}, r.email)),
+          h('div', {}, 'Kata laluan: ', h('strong', { style: 'font-family:monospace' }, r.password))),
+        h('p', { class: 'small muted' }, r.kata_laluan_dijana ? 'Kata laluan ini dijana automatik dan hanya dipaparkan sekali ini. Simpan atau hantar sekarang.' : 'Kata laluan hanya dipaparkan sekali ini.'),
+        h('div', { class: 'row' }, salin,
+          r.whatsapp ? h('a', { class: 'btn btn-sm', href: r.whatsapp, target: '_blank', rel: 'noopener noreferrer' }, 'Hantar melalui WhatsApp') : null),
+      ],
+      butang: [{ label: 'Selesai', nilai: 'ok', kelas: 'btn-primary' }],
+    });
+  }
   async function togolSekat(u, kotak) {
     kotak.disabled = true;
     try {
@@ -810,7 +855,8 @@ async function paparAdmin() {
       h('div', { class: 'row' },
         h('input', { placeholder: 'Cari nama, e-mel atau telefon', style: 'max-width:320px', oninput: (e) => { cari = e.target.value.toLowerCase(); lukis(); } }),
         h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { tapisTidakAktif = e.target.checked; lukis(); } }), 'Tunjuk yang tidak aktif ≥ 5 hari sahaja'),
-        h('button', { class: 'btn-sm', onclick: muatSemula }, 'Muat semula')),
+        h('button', { class: 'btn-sm', onclick: muatSemula }, 'Muat semula'),
+        h('button', { class: 'btn-primary btn-sm', onclick: tambahPengguna }, '+ Tambah pengguna')),
       ringkasan,
       h('div', { class: 'table-wrap' }, h('table', {},
         h('thead', {}, h('tr', {}, ['Pengguna', 'Telefon', 'Didaftar', 'Penggunaan terakhir', 'Kandungan', 'Sekat sementara', 'Tindakan'].map((t) => h('th', {}, t)))),

@@ -369,6 +369,31 @@ app.post('/api/projects/:id/analyze', perluLogMasuk, perluHadAI, ai_route(async 
 }));
 
 // ---------- Panel admin ----------
+// Admin mencipta akaun penulis secara manual
+app.post('/api/admin/users', perluLogMasuk, perluAdmin, async (req, res) => {
+  const full_name = tapis(req.body.full_name, 120).trim();
+  const email = tapis(req.body.email, 200).trim().toLowerCase();
+  const phone = tapis(req.body.phone, 30).trim();
+  const admin_note = tapis(req.body.admin_note, 2000).trim();
+  let password = String(req.body.password || '').trim();
+  const dijana = !password;
+  if (dijana) password = crypto.randomBytes(9).toString('base64url').replace(/[-_]/g, 'x'); // 12 aksara
+  if (full_name.length < 3) return salah(res, 400, 'Sila isi nama penuh.');
+  if (!emelSah(email)) return salah(res, 400, 'Alamat e-mel tidak sah.');
+  if (!telefonSah(phone)) return salah(res, 400, 'Nombor telefon tidak sah. Contoh: 012-345 6789');
+  if (password.length < 8) return salah(res, 400, 'Kata laluan mesti sekurang-kurangnya 8 aksara, atau biarkan kosong untuk dijana automatik.');
+  if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return salah(res, 409, 'E-mel ini sudah didaftarkan.');
+  const r = db.prepare('INSERT INTO users (full_name, email, phone, password_hash, admin_note) VALUES (?, ?, ?, ?, ?)')
+    .run(full_name, email, phone, await bcrypt.hash(password, 12), admin_note);
+  const url = `${req.protocol}://${req.get('host')}/`;
+  const wa = noWhatsApp(phone);
+  const mesej = `Salam ${full_name}, akaun Ruang Menulis anda telah dicipta.\n\nLog masuk: ${url}\nE-mel: ${email}\nKata laluan: ${password}\n\nSila simpan maklumat ini.`;
+  res.json({
+    id: Number(r.lastInsertRowid), full_name, email, password, kata_laluan_dijana: dijana, url_log_masuk: url,
+    whatsapp: wa ? `https://wa.me/${wa}?text=${encodeURIComponent(mesej)}` : null, mesej,
+  });
+});
+
 app.get('/api/admin/users', perluLogMasuk, perluAdmin, (req, res) => {
   const rows = db.prepare(`SELECT u.id, u.full_name, u.email, u.phone, u.role, u.disabled, u.read_only, u.admin_note, u.created_at, u.last_active_at,
       (SELECT count(*) FROM projects p WHERE p.user_id = u.id) AS bilangan_projek,
